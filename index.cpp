@@ -1,153 +1,162 @@
 #include <iostream>
-#include <thread>
-#include <mutex>
 #include <vector>
+#include <thread>
 #include <chrono>
-#include <map>
 #include <random>
-#include <condition_variable>
 
 using namespace std;
 
-// ---------- ENUMS & CONSTANTS ----------
-enum LightState { RED, GREEN, YELLOW };
-const int MAX_LANES = 4;
-const int GREEN_DURATION_BASE = 5; // seconds
-
-// ---------- CLASS DEFINITIONS ----------
-
-class Sensor {
-public:
-    int detectVehicles(); // Simulate number of vehicles on a lane
-};
-
-class TrafficLight {
-private:
-    LightState state;
-    int laneId;
-    mutex mtx;
-
-public:
-    TrafficLight(int id);
-
-    void setState(LightState newState);
-    LightState getState();
-    void displayState();
-};
-
-class Lane {
-public:
+struct Lane {
     int id;
-    Sensor sensor;
-    TrafficLight light;
+    int vehicleCount;
+    bool hasVIP;
+    bool isGreen;
+    int waitTime;
+    bool hasFiretruck;
+    bool hasAmbulance;
 
-    Lane(int id);
+    Lane(int id) : id(id), vehicleCount(0), hasVIP(false), hasFiretruck(false)
+                   ,hasAmbulance(false), isGreen(false), waitTime(0) {}
 };
 
-class TrafficController {
-private:
-    vector<Lane> lanes;
-    mutex controllerMutex;
-    condition_variable cv;
-
-public:
-    TrafficController(int numLanes);
-
-    void monitorTraffic();     // Periodically check vehicle count
-    void updateLights();       // Update light states based on vehicle density
-    void runController();      // Main controller loop
-};
-
-// ---------- FUNCTION IMPLEMENTATIONS ----------
-
-// ----- Sensor -----
-int Sensor::detectVehicles() {
-    random_device rd;
+vector<string> weather = {
+        "Sunny", "Cloudy", "Windy", "Rainy", "Stormy", "Snowy", "Foggy"
+    };
+string today_weather(){
+    random_device rd;           
     mt19937 gen(rd());
-    uniform_int_distribution<> dis(0, 20); // simulate 0–20 vehicles
-    return dis(gen);
+    uniform_int_distribution<> dist(0,weather.size() - 1);
+    return weather[dist(gen)];
 }
-
-// ----- TrafficLight -----
-TrafficLight::TrafficLight(int id) : laneId(id), state(RED) {}
-
-void TrafficLight::setState(LightState newState) {
-    lock_guard<mutex> lock(mtx);
-    state = newState;
-}
-
-LightState TrafficLight::getState() {
-    lock_guard<mutex> lock(mtx);
-    return state;
-}
-
-void TrafficLight::displayState() {
-    lock_guard<mutex> lock(mtx);
-    string color = (state == RED) ? "RED" : (state == GREEN) ? "GREEN" : "YELLOW";
-    cout << "Lane " << laneId << " Light: " << color << endl;
-}
-
-// ----- Lane -----
-Lane::Lane(int id) : id(id), light(id) {}
-
-// ----- TrafficController -----
-TrafficController::TrafficController(int numLanes) {
-    for (int i = 0; i < numLanes; ++i) {
-        lanes.emplace_back(i);
+string weat = today_weather();
+void displayStatus(const vector<Lane>& lanes, int priorityLane, const string& reason) {
+    cout << "\nOUTPUT:\n";
+    int intensity = 0;
+    for(int i = 0;i < weather.size();i++){
+        if(weat == weather[i]){
+            intensity = i + 1;
+        }
     }
-}
+    cout << "Today`s weather : " << weat << endl; 
+    cout << "+--------+------------+---------------+-----------+---------------------+----------+\n";
+    cout << "| Lane   | Vehicles   | Light         | Intensity | Priority Reason     | WaitTime |\n";
+    cout << "+--------+------------+---------------+-----------+---------------------+----------+\n";
 
-void TrafficController::monitorTraffic() {
-    // Collect vehicle data from all lanes
-    for (auto& lane : lanes) {
-        int vehicleCount = lane.sensor.detectVehicles();
-        cout << "Lane " << lane.id << ": " << vehicleCount << " vehicles detected.\n";
-        // Store vehicle count if needed
+    for (const auto& lane : lanes) {
+        cout << "| Lane " << lane.id << " |     "
+             << lane.vehicleCount << "     |  "
+             << (lane.isGreen ? "   GREEN     " : "RED   [WALK] ")<< " |  " << intensity <<"        |";
+
+        if (lane.id == priorityLane) {
+            cout << reason;
+        } else {
+            if (lane.hasAmbulance)       cout << "     Ambulance     ";
+            else if (lane.hasVIP)        cout << "        VIP        ";
+            else if (lane.hasFiretruck)  cout << "     Firetruck     ";
+            else                         cout << "                   ";
+        }
+
+        cout << "|    " << lane.waitTime << "s   |\n";
     }
+
+    cout << "+--------+------------+---------------+-----------+--------------------+----------+\n";
+    cout << "\nNext priority: Lane " << priorityLane << " (" << reason << ")\n" << endl;
 }
 
-void TrafficController::updateLights() {
-    // Simple logic: Give green to lane with max vehicles
-    int maxVehicles = -1, selectedLane = -1;
-
-    for (auto& lane : lanes) {
-        int vehicleCount = lane.sensor.detectVehicles(); // You may want to cache instead
-        if (vehicleCount > maxVehicles) {
-            maxVehicles = vehicleCount;
-            selectedLane = lane.id;
+int selectPriorityLane(vector<Lane>& lanes, string &reason) {
+    for (const auto& lane : lanes) {
+        if (lane.hasAmbulance) {
+            reason = "     Ambulance     ";
+            return lane.id;
+        }
+    }
+    
+    for (const auto& lane : lanes) {
+        if (lane.hasFiretruck) {
+            reason = "     Firetruck     ";
+            return lane.id;
+        }
+    }
+    for (const auto& lane : lanes) {
+        if (lane.hasVIP) {
+            reason = "        VIP        ";
+            return lane.id;
         }
     }
 
-    // Set all lights to RED
-    for (auto& lane : lanes) {
-        lane.light.setState(RED);
+    int maxLane = 0;
+    int maxCount = lanes[0].vehicleCount;
+    for (const auto& lane : lanes) {
+        if (lane.vehicleCount > maxCount) {
+            maxCount = lane.vehicleCount;
+            maxLane = lane.id;
+        }
     }
 
-    // Set selected lane to GREEN
-    if (selectedLane != -1) {
-        lanes[selectedLane].light.setState(GREEN);
-        lanes[selectedLane].light.displayState();
-        this_thread::sleep_for(chrono::seconds(GREEN_DURATION_BASE + maxVehicles / 4)); // dynamic duration
-        lanes[selectedLane].light.setState(YELLOW);
-        lanes[selectedLane].light.displayState();
-        this_thread::sleep_for(chrono::seconds(2));
-    }
+    reason = "   Most vehicles    ";
+    return maxLane;
 }
 
-void TrafficController::runController() {
-    while (true) {
-        monitorTraffic();
-        updateLights();
-        this_thread::sleep_for(chrono::seconds(1));
-    }
-}
-
-// ---------- MAIN ----------
 int main() {
-    TrafficController controller(MAX_LANES);
 
-    thread controllerThread(&TrafficController::runController, &controller);
+    int numLanes;
+    cout << "Enter number of traffic lanes: ";
+    cin >> numLanes;
 
-    controllerThread.join();
+    vector<Lane> lanes;
+    for (int i = 0; i < numLanes; ++i) {
+        Lane lane(i);
+        char vip, ped, amb;
+        cout << "Is there a [ VIP ] at Lane " << i << "? (y/n): ";
+        cin >> vip;
+        lane.hasVIP = (vip == 'y' || vip == 'Y');
+        
+        if(!lane.hasVIP){
+        cout << "Enter vehicle count for Lane " << i << ": ";
+        cin >> lane.vehicleCount;
+        }
+        
+        cout << "Ambulance Sirens" << i << "? (y/n): ";
+        cin >> amb;
+        lane.hasAmbulance = (amb == 'y' || amb == 'Y');
+        
+        cout << "Is there an [ Firetruck ] waiting at Lane " << i << "? (y/n): ";
+        cin >> amb;
+        lane.hasFiretruck = (amb == 'y' || amb == 'Y');
+
+        lanes.push_back(lane);
+    }
+
+    // Run simulation for 5 green light cycles
+    for (int round = 1; round <= 5; ++round) {
+        cout << "\n======= CYCLE " << round << " =======\n";
+
+        string reason;
+        int priorityLane = selectPriorityLane(lanes, reason);
+
+        for (auto& lane : lanes) {
+            lane.isGreen = (lane.id == priorityLane);
+
+            if (lane.isGreen) {
+                int passed = min(5 + rand() % 3, lane.vehicleCount); // 5–7 vehicles pass
+                lane.vehicleCount -= passed;
+                lane.waitTime = 0;
+            } else {
+                lane.waitTime += 5;
+                lane.vehicleCount += rand() % 3; // Random vehicle generation
+            }
+        }
+
+        // Show before clearing priority flags
+        displayStatus(lanes, priorityLane, reason);
+
+        // Reset priority flags AFTER display
+        lanes[priorityLane].hasVIP = false;
+        lanes[priorityLane].hasAmbulance = false;
+        lanes[priorityLane].hasFiretruck = false;
+        this_thread::sleep_for(chrono::seconds(5));
+    }
+
+    cout << "\nSimulation complete. Log saved to traffic_log.txt.\n";
     return 0;
 }
