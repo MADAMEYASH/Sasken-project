@@ -1,15 +1,24 @@
 #ifndef TRAFFICLIGHT_H
 #define TRAFFICLIGHT_H
 
-enum LightState { RED, GREEN, YELLOW };
+enum LightState {
+    RED,
+    GREEN,
+    YELLOW
+};
 
 class TrafficLight {
-public:
+private:
     LightState state;
+
+public:
     TrafficLight();
+
     void changeToGreen();
     void changeToRed();
     void changeToYellow();
+
+    LightState getState() const;
 };
 
 #endif

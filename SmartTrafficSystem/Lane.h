@@ -16,6 +16,12 @@ public:
 
     Lane(int i);
     void update(int count, bool vip, bool ped, bool amb);
+
+    void setGreen();
+    void setRed();
+    void setYellow();
+    void printStatus();
+    
 };
 
 #endif
